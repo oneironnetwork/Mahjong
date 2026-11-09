@@ -1,0 +1,440 @@
+<title>Mahjong Hand Spinner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Rubik:wght@400;500;700;800&display=swap">
+<style>
+/* Layout: one-screen felt table. Two player "racks" on top, a spin reel, and full-screen private reveals. */
+:root {
+  --felt: #0f4a43;
+  --felt-deep: #0a3530;
+  --felt-line: #1c6359;
+  --ivory: #f7f2e3;
+  --ivory-edge: #d9cfb3;
+  --ink: #1d1b17;
+  --suit-blue: #2a73b8;
+  --suit-red: #d2432b;
+  --gold: #e8c26a;
+  --text: #eef5f1;
+  --muted: #a9c7bf;
+  --display: "Alfa Slab One", Rockwell, "Roboto Slab", Georgia, serif;
+  --body: "Rubik", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: radial-gradient(120% 80% at 50% 0%, var(--felt) 0%, var(--felt-deep) 100%) fixed, var(--felt-deep);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 16px;
+  -webkit-tap-highlight-color: transparent;
+}
+.wrap {
+  max-width: 560px;
+  margin: 0 auto;
+  padding-block: 20px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 18px;
+}
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--display); font-weight: 400; font-size: 1.7rem; margin: 0; letter-spacing: .01em; color: var(--ivory); text-wrap: balance; }
+.card-year { font-size: .75rem; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+
+.players { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.player {
+  background: rgba(0,0,0,.18);
+  border: 1px solid var(--felt-line);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  min-width: 0;
+}
+.player.turn { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.player label { font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.player input {
+  width: 100%; min-width: 0;
+  background: transparent; border: none; border-bottom: 1px dashed var(--felt-line);
+  color: var(--ivory); font: 700 1.15rem var(--body); padding: 2px 0 4px;
+}
+.player input:focus { outline: none; border-bottom-color: var(--gold); }
+.status { font-size: .85rem; color: var(--muted); min-height: 1.2em; }
+.status.locked { color: var(--gold); font-weight: 700; }
+.tilebacks { display: flex; gap: 3px; height: 26px; }
+.tilebacks span { flex: 1; max-width: 16px; border-radius: 3px; background: var(--ivory); border-bottom: 4px solid var(--suit-blue); opacity: .2; }
+.player.has .tilebacks span { opacity: 1; }
+
+button {
+  font: 700 1rem var(--body);
+  border-radius: 12px; border: none; cursor: pointer;
+  padding: 14px 16px;
+  touch-action: manipulation;
+}
+button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+button:disabled { opacity: .4; cursor: not-allowed; }
+.btn-spin { background: var(--gold); color: var(--ink); }
+.btn-ghost { background: transparent; color: var(--ivory); border: 1px solid var(--felt-line); }
+.btn-peek { background: rgba(255,255,255,.06); color: var(--ivory); border: 1px solid var(--felt-line); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.btn-peek.held { background: var(--ivory); color: var(--ink); }
+.btn-ivory { background: var(--ivory); color: var(--ink); }
+.btn-red { background: var(--suit-red); color: #fff; }
+
+.hint { text-align: center; color: var(--muted); font-size: .95rem; margin: 0; min-height: 1.3em; }
+.hint strong { color: var(--ivory); }
+
+.footer-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.footer-actions button { flex: 1 1 160px; }
+
+details.settings { border-top: 1px solid var(--felt-line); padding-top: 12px; color: var(--muted); }
+details.settings summary { cursor: pointer; font-weight: 700; color: var(--ivory); font-size: .95rem; }
+.setting { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; font-size: .95rem; }
+.setting input { width: 20px; height: 20px; accent-color: var(--gold); flex: none; margin-top: 1px; }
+
+.legend { font-size: .8rem; color: var(--muted); line-height: 1.6; }
+.legend b.k { color: var(--ivory); }
+.legend b.bl { color: #7db6ea; }
+.legend b.rd { color: #f08a72; }
+
+/* Overlay screens */
+.screen {
+  position: fixed; inset: 0; z-index: 20;
+  background: var(--felt-deep);
+  display: flex; flex-direction: column; align-items: stretch; justify-content: center;
+  padding-top: calc(20px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  overflow-y: auto;
+}
+.screen-inner { max-width: 560px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.screen h2 { font-family: var(--display); font-weight: 400; font-size: 1.5rem; margin: 0; color: var(--ivory); text-align: center; text-wrap: balance; }
+.screen p.sub { margin: 0; text-align: center; color: var(--muted); }
+
+.reel {
+  background: var(--ivory); color: var(--ink);
+  border-radius: 14px; border-bottom: 6px solid var(--ivory-edge);
+  height: 120px; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  padding: 0 14px; text-align: center; gap: 4px;
+}
+.reel .cat { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; color: #7a705a; }
+.reel .pat { font-weight: 800; font-size: clamp(1rem, 4.6vw, 1.35rem); letter-spacing: .02em; }
+.reel.blur .pat { filter: blur(.6px); }
+
+/* The hand, set like the printed card */
+.hand {
+  background: var(--ivory); color: var(--ink);
+  border-radius: 14px; border-bottom: 6px solid var(--ivory-edge);
+  padding: 18px 16px; display: flex; flex-direction: column; gap: 12px;
+}
+.hand-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.hand-cat { font-family: var(--display); font-size: 1.15rem; color: #6b2433; }
+.hand-line { font-size: .8rem; color: #7a705a; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.pattern { font-weight: 800; font-size: clamp(1.15rem, 5.4vw, 1.6rem); line-height: 1.35; letter-spacing: .02em; word-spacing: .18em; overflow-wrap: anywhere; }
+.pattern .b { color: var(--suit-blue); }
+.pattern .r { color: var(--suit-red); }
+.or { font-size: .8rem; font-weight: 500; color: #7a705a; letter-spacing: .1em; text-transform: uppercase; }
+.note { font-size: .9rem; color: #5a5242; font-style: italic; }
+.hand-foot { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; border-top: 1px dashed var(--ivory-edge); padding-top: 10px; }
+.pts { font-weight: 800; font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+.chip { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border-radius: 99px; padding: 4px 9px; }
+.chip.conc { background: #6b2433; color: var(--ivory); }
+.chip.bonus { background: #e6dcc0; color: #4d4535; }
+
+.screen-actions { display: flex; flex-direction: column; gap: 10px; }
+.both { display: grid; gap: 14px; }
+.both .who { font-weight: 800; color: var(--gold); font-size: 1rem; margin: 0 0 6px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap" id="app">
+  <header>
+    <h1>Mahjong Hand Spinner</h1>
+    <span class="card-year">2026 card · 50 hands</span>
+  </header>
+
+  <div class="players">
+    <section class="player" id="p0">
+      <label for="name0">Player 1</label>
+      <input id="name0" type="text" maxlength="16" autocomplete="off">
+      <div class="tilebacks" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="status" id="status0"></div>
+      <button class="btn-spin" id="spin0">Spin</button>
+      <button class="btn-peek" id="peek0" hidden>Hold to peek</button>
+    </section>
+    <section class="player" id="p1">
+      <label for="name1">Player 2</label>
+      <input id="name1" type="text" maxlength="16" autocomplete="off">
+      <div class="tilebacks" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="status" id="status1"></div>
+      <button class="btn-spin" id="spin1">Spin</button>
+      <button class="btn-peek" id="peek1" hidden>Hold to peek</button>
+    </section>
+  </div>
+
+  <p class="hint" id="hint"></p>
+
+  <div class="footer-actions">
+    <button class="btn-ghost" id="revealBtn" disabled>Show both hands</button>
+    <button class="btn-ghost" id="newBtn">New game</button>
+  </div>
+
+  <details class="settings">
+    <summary>Settings &amp; how to read a hand</summary>
+    <div class="setting">
+      <input type="checkbox" id="optConcealed" checked>
+      <label for="optConcealed">Include concealed (C) hands</label>
+    </div>
+    <div class="setting">
+      <input type="checkbox" id="optDupes">
+      <label for="optDupes">Allow both players to get the same hand</label>
+    </div>
+    <p class="legend">
+      <b class="bl">Blue</b>, <b class="rd">red</b> and <b class="k">black</b> groups are three different suits.
+      A hand written all in black is played in one suit.
+      F = Flower · D = Dragon · N E W S = Winds · 0 = Soap (White Dragon), usable with any suit.
+      Hands without exposures earn +10, except hands marked C.
+    </p>
+  </details>
+</div>
+
+<!-- Pass / spinning / reveal screen -->
+<div class="screen" id="screen" hidden>
+  <div class="screen-inner" id="screenInner"></div>
+</div>
+
+<script>
+// ---- The 2026 card ----
+// Tokens: "b:" = blue suit, "r:" = red suit, no prefix = black.
+const HANDS = [
+  // 2026
+  {cat:"2026", n:1, v:25, alts:["b:222 0000 r:222 6666"]},
+  {cat:"2026", n:2, v:30, alts:["b:DDD r:D b:222 r:222 2026"], note:"Matching pungs: 2s or 6s"},
+  {cat:"2026", n:3, v:40, alts:["FFF NEWS DDD 2026"]},
+  {cat:"2026", n:4, v:40, alts:["FF b:2026 r:2222 2222"], note:"Matching kongs: 2s or 6s"},
+  {cat:"2026", n:5, v:55, alts:["NNN EE 2026 WW SSS"]},
+  // 2468
+  {cat:"2468", n:1, v:15, alts:["F 222 444 666 8888", "F b:222 b:444 r:666 8888"]},
+  {cat:"2468", n:2, v:25, alts:["b:222 NNNN r:222 SSSS", "b:222 EEEE r:222 WWWW"], note:"Any matching even pungs"},
+  {cat:"2468", n:3, v:30, alts:["FF NNN 222 4444 66"], note:"Any wind"},
+  {cat:"2468", n:4, v:30, alts:["FF 2 4 666 8888 DDD", "FF b:2 b:4 r:666 8888 b:DDD"], note:"Dragons match singles"},
+  {cat:"2468", n:5, v:35, alts:["FF 2222 8888 DDDD", "FF b:2222 r:8888 DDDD"], note:"Any non-matching even kongs"},
+  {cat:"2468", n:6, v:40, alts:["222 444 666 88888", "b:222 b:444 r:666 88888"], note:"Quint"},
+  {cat:"2468", n:7, v:50, c:true, alts:["b:2468D r:2468D 2468"]},
+  {cat:"2468", n:8, v:70, c:true, alts:["FF b:22 b:44 b:66 b:88 r:22 22"], note:"Last two pairs: any matching even pairs in opposite suits"},
+  // Any Matching Numbers
+  {cat:"Any Matching Numbers", n:1, v:15, alts:["NNN b:111 r:11 111 SSS", "EEE b:111 r:11 111 WWW"]},
+  {cat:"Any Matching Numbers", n:2, v:25, alts:["b:1111 r:1111 1111 b:DD"], note:"Any dragon"},
+  {cat:"Any Matching Numbers", n:3, v:30, alts:["b:111 r:111 111 b:DDDDD"], note:"Quint, any dragon"},
+  {cat:"Any Matching Numbers", n:4, v:40, alts:["FFF b:1111 FFF r:1111"]},
+  // Consecutive Numbers
+  {cat:"Consecutive Numbers", n:1, v:10, alts:["FF 111 222 333 444", "FF b:111 b:222 r:333 r:444"], note:"Any run"},
+  {cat:"Consecutive Numbers", n:2, v:15, alts:["b:111 b:2222 r:111 r:2222"], note:"Any run"},
+  {cat:"Consecutive Numbers", n:3, v:20, alts:["FFFF NN 111 222 DD"], note:"Any run · any wind"},
+  {cat:"Consecutive Numbers", n:4, v:30, alts:["111 22 3333 44 555"], note:"Any run"},
+  {cat:"Consecutive Numbers", n:5, v:30, alts:["b:111 b:22 NEWS r:33 r:444"], note:"Any run"},
+  {cat:"Consecutive Numbers", n:6, v:35, alts:["FF 99 888 7777 DDD", "FF b:99 r:888 7777 r:DDD"], note:"Any run · dragons match pung"},
+  {cat:"Consecutive Numbers", n:7, v:45, alts:["11 222 3333 44444", "b:11 b:222 b:3333 r:44444"], note:"Any run · quint"},
+  {cat:"Consecutive Numbers", n:8, v:70, c:true, alts:["FF 1 2 33 4 5 66 7 8 99", "FF b:1 b:2 b:33 r:4 r:5 r:66 7 8 99"], note:"These numbers only"},
+  // 13579
+  {cat:"13579", n:1, v:20, alts:["NNN 111 33 555 SSS", "NNN b:111 r:33 555 SSS"]},
+  {cat:"13579", n:2, v:20, alts:["EEE 555 77 999 WWW", "EEE b:555 r:77 999 WWW"]},
+  {cat:"13579", n:3, v:25, alts:["111 5555 999 DDDD", "b:111 r:5555 b:999 r:DDDD"], note:"Dragons match 5s"},
+  {cat:"13579", n:4, v:30, alts:["FF NNN 333 5555 77", "FF NNN b:333 r:5555 77"], note:"Any wind"},
+  {cat:"13579", n:5, v:30, alts:["111 33 5555 77 999"]},
+  {cat:"13579", n:6, v:35, alts:["FF 1111 9999 DDDD", "FF b:1111 r:9999 DDDD"], note:"Any non-matching odd kongs"},
+  {cat:"13579", n:7, v:40, alts:["FFF b:111 r:333 55555", "FFF b:555 r:777 99999"], note:"Quint"},
+  {cat:"13579", n:8, v:70, c:true, alts:["b:11 b:33 b:55 b:77 b:99 r:11 11"], note:"Last two pairs: any matching odd pairs in opposite suits"},
+  // Winds-Dragons
+  {cat:"Winds-Dragons", n:1, v:25, alts:["NNN EEE WWW SSS DD"], note:"Any dragon"},
+  {cat:"Winds-Dragons", n:2, v:50, alts:["FFF b:DDD r:DDDDD DDD"], note:"Quint"},
+  {cat:"Winds-Dragons", n:3, v:55, alts:["b:DDD NN EE WW SS r:DDD"]},
+  // 369
+  {cat:"369", n:1, v:25, alts:["FF 333 666 999 DDD", "FF b:333 r:666 999 r:DDD"], note:"Dragons match 6s"},
+  {cat:"369", n:2, v:30, alts:["333 6666 999 NEWS", "b:333 r:6666 999 NEWS"]},
+  {cat:"369", n:3, v:35, alts:["b:333 b:666 b:999 r:33333"], note:"Quint: 3, 6 or 9"},
+  {cat:"369", n:4, v:45, alts:["FF b:3 b:66 b:999 r:333 r:66 r:9"]},
+  {cat:"369", n:5, v:70, c:true, alts:["FF b:369D r:369D 369D"]},
+  // Mad Math
+  {cat:"Mad Math", n:1, v:20, alts:["b:333+777=10 r:DDD DDD"], note:"These numbers only"},
+  {cat:"Mad Math", n:2, v:30, alts:["FFFF 3333×9999=27", "FFFF b:3333 × r:9999 =27"], note:"These numbers only"},
+  {cat:"Mad Math", n:3, v:30, alts:["FFFF 5555×2222=10", "FFFF b:5555 × r:2222 =10"], note:"These numbers only"},
+  {cat:"Mad Math", n:4, v:70, c:true, alts:["NEWS 2+4+6+8+3+5+7+9=44", "NEWS b:2+4+6+8+ r:3+5+7+9 =44"], note:"These numbers only"},
+  // Big Brain
+  {cat:"Big Brain", n:1, v:30, alts:["FFF 2222 7777 DDD", "FFF b:2222 r:7777 DDD"], note:"These numbers only"},
+  {cat:"Big Brain", n:2, v:40, alts:["FF 1111 NEWS 6666", "FF b:1111 NEWS r:6666"], note:"These numbers only"},
+  {cat:"Big Brain", n:3, v:50, alts:["FF 333 NN E W SS 888", "FF b:333 NN E W SS r:888"], note:"These numbers only"},
+  {cat:"Big Brain", n:4, v:70, c:true, alts:["N EE 05 10 15 20 WW S"], note:"0 = Soap"},
+  {cat:"Big Brain", n:5, v:85, c:true, alts:["FF NEWS N0W WE W0N"], note:"0 = Soap"},
+];
+
+// ---- State ----
+const KEY = "mj-spinner-2026";
+const blank = () => ({ names: ["Josh", "Player 2"], hands: [null, null], concealed: true, dupes: false });
+let state = blank();
+try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && Array.isArray(s.hands)) state = { ...blank(), ...s }; } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const nameOf = i => (state.names[i] || "").trim() || `Player ${i + 1}`;
+
+function randInt(n) {
+  try { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; }
+  catch (e) { return Math.floor(Math.random() * n); }
+}
+
+function pool(i) {
+  const other = state.hands[1 - i];
+  return HANDS.map((h, idx) => idx).filter(idx =>
+    (state.concealed || !HANDS[idx].c) && (state.dupes || idx !== other));
+}
+
+// ---- Rendering a hand ----
+function patHTML(str) {
+  return str.split(" ").map(t => {
+    const m = t.match(/^([br]):(.*)$/);
+    return m ? `<span class="${m[1]}">${esc(m[2])}</span>` : `<span>${esc(t)}</span>`;
+  }).join(" ");
+}
+function handHTML(idx) {
+  const h = HANDS[idx];
+  const alts = h.alts.map(a => `<div class="pattern">${patHTML(a)}</div>`).join(`<div class="or">or</div>`);
+  return `<div class="hand">
+    <div class="hand-top"><span class="hand-cat">${esc(h.cat)}</span><span class="hand-line">Line ${h.n}</span></div>
+    ${alts}
+    ${h.note ? `<div class="note">${esc(h.note)}</div>` : ""}
+    <div class="hand-foot">
+      <span class="pts">${h.v} pts</span>
+      ${h.c ? `<span class="chip conc">Concealed</span>` : `<span class="chip bonus">+10 if concealed</span>`}
+    </div>
+  </div>`;
+}
+
+// ---- Main screen ----
+function render() {
+  [0, 1].forEach(i => {
+    const has = state.hands[i] !== null;
+    const inp = $("name" + i);
+    if (document.activeElement !== inp) inp.value = state.names[i];
+    $("p" + i).classList.toggle("has", has);
+    $("status" + i).textContent = has ? "Hand locked in" : "No hand yet";
+    $("status" + i).classList.toggle("locked", has);
+    $("spin" + i).hidden = has;
+    $("peek" + i).hidden = !has;
+  });
+  const next = state.hands[0] === null ? 0 : state.hands[1] === null ? 1 : -1;
+  [0, 1].forEach(i => $("p" + i).classList.toggle("turn", i === next));
+  const hint = $("hint");
+  if (next === 0 && state.hands[1] === null) hint.innerHTML = `<strong>${esc(nameOf(0))}</strong>, tap Spin. Keep the screen to yourself.`;
+  else if (next >= 0) hint.innerHTML = `Pass the phone to <strong>${esc(nameOf(next))}</strong>.`;
+  else hint.innerHTML = `Both hands are locked. Hold your Peek button to check yours.`;
+  $("revealBtn").disabled = next !== -1;
+  $("optConcealed").checked = state.concealed;
+  $("optDupes").checked = state.dupes;
+}
+
+// ---- Overlay screens ----
+const screen = $("screen"), inner = $("screenInner");
+function openScreen(html) { inner.innerHTML = html; screen.hidden = false; screen.scrollTop = 0; }
+function closeScreen() { screen.hidden = true; inner.innerHTML = ""; render(); }
+
+function confirmScreen(title, sub, yesLabel, onYes) {
+  openScreen(`<h2>${title}</h2><p class="sub">${sub}</p>
+    <div class="screen-actions">
+      <button class="btn-spin" id="cYes">${yesLabel}</button>
+      <button class="btn-ghost" id="cNo">Cancel</button>
+    </div>`);
+  $("cYes").onclick = onYes;
+  $("cNo").onclick = closeScreen;
+}
+
+function spin(i) {
+  const ids = pool(i);
+  if (!ids.length) return;
+  const pick = ids[randInt(ids.length)];
+  openScreen(`<h2>${esc(nameOf(i))}'s spin</h2>
+    <div class="reel blur" id="reel"><div class="cat" id="reelCat"></div><div class="pat" id="reelPat"></div></div>
+    <p class="sub">Spinning…</p>`);
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const steps = reduce ? 1 : 22;
+  let k = 0;
+  const tick = () => {
+    const idx = k >= steps - 1 ? pick : ids[randInt(ids.length)];
+    const h = HANDS[idx];
+    $("reelCat").textContent = h.cat;
+    $("reelPat").innerHTML = patHTML(h.alts[h.alts.length - 1]);
+    k++;
+    if (k < steps) setTimeout(tick, 40 + Math.pow(k / steps, 3) * 260);
+    else setTimeout(() => showResult(i, pick), reduce ? 0 : 450);
+  };
+  tick();
+}
+
+function showResult(i, idx) {
+  state.hands[i] = idx; save();
+  const other = 1 - i;
+  const passText = state.hands[other] === null ? `Hide &amp; pass to ${esc(nameOf(other))}` : "Hide my hand";
+  openScreen(`<h2>${esc(nameOf(i))}, this is your hand</h2>
+    ${handHTML(idx)}
+    <div class="screen-actions">
+      <button class="btn-spin" id="hideBtn">${passText}</button>
+      <button class="btn-ghost" id="againBtn">Spin again</button>
+    </div>`);
+  $("hideBtn").onclick = closeScreen;
+  $("againBtn").onclick = () => spin(i);
+}
+
+function revealBoth() {
+  openScreen(`<h2>The hands</h2>
+    <div class="both">
+      ${[0, 1].map(i => `<div><p class="who">${esc(nameOf(i))}</p>${handHTML(state.hands[i])}</div>`).join("")}
+    </div>
+    <div class="screen-actions">
+      <button class="btn-spin" id="playAgain">New game</button>
+      <button class="btn-ghost" id="backBtn">Back</button>
+    </div>`);
+  $("playAgain").onclick = () => { state.hands = [null, null]; save(); closeScreen(); };
+  $("backBtn").onclick = closeScreen;
+}
+
+// ---- Hold to peek ----
+function bindPeek(i) {
+  const btn = $("peek" + i);
+  let open = false;
+  const show = e => {
+    e.preventDefault();
+    if (open || state.hands[i] === null) return;
+    open = true; btn.classList.add("held");
+    openScreen(`<h2>${esc(nameOf(i))}'s hand</h2>${handHTML(state.hands[i])}<p class="sub">Let go to hide</p>`);
+    screen.style.pointerEvents = "none";
+  };
+  const hide = () => {
+    if (!open) return;
+    open = false; btn.classList.remove("held");
+    screen.style.pointerEvents = "";
+    closeScreen();
+  };
+  btn.addEventListener("pointerdown", show);
+  ["pointerup", "pointercancel", "pointerleave"].forEach(ev => btn.addEventListener(ev, hide));
+  window.addEventListener("pointerup", hide);
+  window.addEventListener("blur", hide);
+  btn.addEventListener("contextmenu", e => e.preventDefault());
+  btn.addEventListener("keydown", e => { if ((e.key === " " || e.key === "Enter") && !e.repeat) show(e); });
+  btn.addEventListener("keyup", e => { if (e.key === " " || e.key === "Enter") hide(); });
+}
+
+// ---- Wiring ----
+[0, 1].forEach(i => {
+  $("spin" + i).onclick = () => spin(i);
+  $("name" + i).addEventListener("input", e => { state.names[i] = e.target.value; save(); render(); });
+  bindPeek(i);
+});
+$("revealBtn").onclick = () => confirmScreen("Show both hands?", "Only do this when the game is over. Both hands will be on screen.", "Show both", revealBoth);
+$("newBtn").onclick = () => confirmScreen("Start a new game?", "Both hands will be cleared.", "Clear hands", () => { state.hands = [null, null]; save(); closeScreen(); });
+$("optConcealed").onchange = e => { state.concealed = e.target.checked; save(); };
+$("optDupes").onchange = e => { state.dupes = e.target.checked; save(); };
+
+render();
+</script>
