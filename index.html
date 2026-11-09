@@ -21,6 +21,7 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   background: radial-gradient(120% 80% at 50% 0%, var(--felt) 0%, var(--felt-deep) 100%) fixed, var(--felt-deep);
@@ -41,6 +42,12 @@ header { display: flex; align-items: baseline; justify-content: space-between; g
 h1 { font-family: var(--display); font-weight: 400; font-size: 1.7rem; margin: 0; letter-spacing: .01em; color: var(--ivory); text-wrap: balance; }
 .card-year { font-size: .75rem; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
 
+.count-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.count-label { font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.seg { display: flex; background: rgba(0,0,0,.25); border: 1px solid var(--felt-line); border-radius: 12px; padding: 3px; gap: 3px; }
+.seg button { padding: 8px 18px; background: transparent; color: var(--ivory); border-radius: 9px; font-variant-numeric: tabular-nums; }
+.seg button[aria-checked="true"] { background: var(--ivory); color: var(--ink); }
+.seg-note { font-size: .85rem; color: var(--muted); margin: -8px 0 0; min-height: 1.2em; }
 .players { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .player {
   background: rgba(0,0,0,.18);
@@ -154,29 +161,23 @@ details.settings summary { cursor: pointer; font-weight: 700; color: var(--ivory
     <span class="card-year">2026 card · 50 hands</span>
   </header>
 
-  <div class="players">
-    <section class="player" id="p0">
-      <label for="name0">Player 1</label>
-      <input id="name0" type="text" maxlength="16" autocomplete="off">
-      <div class="tilebacks" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-      <div class="status" id="status0"></div>
-      <button class="btn-spin" id="spin0">Spin</button>
-      <button class="btn-peek" id="peek0" hidden>Hold to peek</button>
-    </section>
-    <section class="player" id="p1">
-      <label for="name1">Player 2</label>
-      <input id="name1" type="text" maxlength="16" autocomplete="off">
-      <div class="tilebacks" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-      <div class="status" id="status1"></div>
-      <button class="btn-spin" id="spin1">Spin</button>
-      <button class="btn-peek" id="peek1" hidden>Hold to peek</button>
-    </section>
+  <div class="count-row">
+    <span class="count-label" id="countLabel">Players at the table</span>
+    <div class="seg" role="radiogroup" aria-labelledby="countLabel">
+      <button role="radio" data-n="2">2</button>
+      <button role="radio" data-n="3">3</button>
+      <button role="radio" data-n="4">4</button>
+    </div>
   </div>
+
+  <p class="seg-note" id="segNote"></p>
+
+  <div class="players" id="players"></div>
 
   <p class="hint" id="hint"></p>
 
   <div class="footer-actions">
-    <button class="btn-ghost" id="revealBtn" disabled>Show both hands</button>
+    <button class="btn-ghost" id="revealBtn" disabled>Show all hands</button>
     <button class="btn-ghost" id="newBtn">New game</button>
   </div>
 
@@ -188,7 +189,7 @@ details.settings summary { cursor: pointer; font-weight: 700; color: var(--ivory
     </div>
     <div class="setting">
       <input type="checkbox" id="optDupes">
-      <label for="optDupes">Allow both players to get the same hand</label>
+      <label for="optDupes">Allow players to get the same hand</label>
     </div>
     <p class="legend">
       <b class="bl">Blue</b>, <b class="rd">red</b> and <b class="k">black</b> groups are three different suits.
@@ -271,9 +272,21 @@ const HANDS = [
 
 // ---- State ----
 const KEY = "mj-spinner-2026";
-const blank = () => ({ names: ["Josh", "Player 2"], hands: [null, null], concealed: true, dupes: false });
+const MAX = 4;
+const blank = () => ({ count: 2, names: ["Josh", "Player 2", "Player 3", "Player 4"], hands: [null, null, null, null], concealed: true, dupes: false });
 let state = blank();
-try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && Array.isArray(s.hands)) state = { ...blank(), ...s }; } catch (e) {}
+try {
+  const s = JSON.parse(localStorage.getItem(KEY));
+  if (s && Array.isArray(s.hands)) {
+    const b = blank();
+    state = { ...b, ...s };
+    state.names = b.names.map((n, i) => (s.names && s.names[i] != null ? s.names[i] : n));
+    state.hands = b.hands.map((h, i) => (s.hands[i] != null ? s.hands[i] : null));
+    if (![2, 3, 4].includes(state.count)) state.count = 2;
+  }
+} catch (e) {}
+const seats = () => [...Array(state.count).keys()];
+const clearHands = () => { state.hands = [null, null, null, null]; };
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
 
 const $ = id => document.getElementById(id);
@@ -286,9 +299,9 @@ function randInt(n) {
 }
 
 function pool(i) {
-  const other = state.hands[1 - i];
+  const taken = seats().filter(j => j !== i).map(j => state.hands[j]).filter(h => h !== null);
   return HANDS.map((h, idx) => idx).filter(idx =>
-    (state.concealed || !HANDS[idx].c) && (state.dupes || idx !== other));
+    (state.concealed || !HANDS[idx].c) && (state.dupes || !taken.includes(idx)));
 }
 
 // ---- Rendering a hand ----
@@ -313,24 +326,55 @@ function handHTML(idx) {
 }
 
 // ---- Main screen ----
+const playersEl = $("players");
+let builtFor = 0;
+
+function buildPlayers() {
+  playersEl.innerHTML = seats().map(i => `
+    <section class="player" id="p${i}">
+      <label for="name${i}">Player ${i + 1}</label>
+      <input id="name${i}" type="text" maxlength="16" autocomplete="off">
+      <div class="tilebacks" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="status" id="status${i}"></div>
+      <button class="btn-spin" id="spin${i}">Spin</button>
+      <button class="btn-peek" id="peek${i}" hidden>Hold to peek</button>
+    </section>`).join("");
+  seats().forEach(i => {
+    $("spin" + i).onclick = () => spin(i);
+    $("name" + i).addEventListener("input", e => { state.names[i] = e.target.value; save(); render(); });
+    bindPeek(i);
+  });
+  builtFor = state.count;
+}
+
+const nextSeat = () => seats().find(i => state.hands[i] === null) ?? -1;
+
 function render() {
-  [0, 1].forEach(i => {
+  if (builtFor !== state.count) buildPlayers();
+  const anySpun = seats().some(i => state.hands[i] !== null);
+  document.querySelectorAll(".seg button").forEach(b => {
+    b.setAttribute("aria-checked", String(+b.dataset.n === state.count));
+    b.disabled = anySpun;
+  });
+  $("segNote").textContent = anySpun ? "Start a new game to change the number of players." : "";
+  const next = nextSeat();
+  seats().forEach(i => {
     const has = state.hands[i] !== null;
     const inp = $("name" + i);
     if (document.activeElement !== inp) inp.value = state.names[i];
     $("p" + i).classList.toggle("has", has);
+    $("p" + i).classList.toggle("turn", i === next);
     $("status" + i).textContent = has ? "Hand locked in" : "No hand yet";
     $("status" + i).classList.toggle("locked", has);
     $("spin" + i).hidden = has;
     $("peek" + i).hidden = !has;
   });
-  const next = state.hands[0] === null ? 0 : state.hands[1] === null ? 1 : -1;
-  [0, 1].forEach(i => $("p" + i).classList.toggle("turn", i === next));
   const hint = $("hint");
-  if (next === 0 && state.hands[1] === null) hint.innerHTML = `<strong>${esc(nameOf(0))}</strong>, tap Spin. Keep the screen to yourself.`;
-  else if (next >= 0) hint.innerHTML = `Pass the phone to <strong>${esc(nameOf(next))}</strong>.`;
-  else hint.innerHTML = `Both hands are locked. Hold your Peek button to check yours.`;
+  if (next === 0) hint.innerHTML = `<strong>${esc(nameOf(0))}</strong>, tap Spin. Keep the screen to yourself.`;
+  else if (next > 0) hint.innerHTML = `Pass the phone to <strong>${esc(nameOf(next))}</strong>.`;
+  else hint.innerHTML = `All hands are locked. Hold your Peek button to check yours.`;
   $("revealBtn").disabled = next !== -1;
+  $("revealBtn").textContent = state.count === 2 ? "Show both hands" : "Show all hands";
   $("optConcealed").checked = state.concealed;
   $("optDupes").checked = state.dupes;
 }
@@ -374,8 +418,8 @@ function spin(i) {
 
 function showResult(i, idx) {
   state.hands[i] = idx; save();
-  const other = 1 - i;
-  const passText = state.hands[other] === null ? `Hide &amp; pass to ${esc(nameOf(other))}` : "Hide my hand";
+  const next = nextSeat();
+  const passText = next >= 0 ? `Hide &amp; pass to ${esc(nameOf(next))}` : "Hide my hand";
   openScreen(`<h2>${esc(nameOf(i))}, this is your hand</h2>
     ${handHTML(idx)}
     <div class="screen-actions">
@@ -383,19 +427,19 @@ function showResult(i, idx) {
       <button class="btn-ghost" id="againBtn">Spin again</button>
     </div>`);
   $("hideBtn").onclick = closeScreen;
-  $("againBtn").onclick = () => spin(i);
+  $("againBtn").onclick = () => { state.hands[i] = null; spin(i); };
 }
 
-function revealBoth() {
+function revealAll() {
   openScreen(`<h2>The hands</h2>
     <div class="both">
-      ${[0, 1].map(i => `<div><p class="who">${esc(nameOf(i))}</p>${handHTML(state.hands[i])}</div>`).join("")}
+      ${seats().map(i => `<div><p class="who">${esc(nameOf(i))}</p>${handHTML(state.hands[i])}</div>`).join("")}
     </div>
     <div class="screen-actions">
       <button class="btn-spin" id="playAgain">New game</button>
       <button class="btn-ghost" id="backBtn">Back</button>
     </div>`);
-  $("playAgain").onclick = () => { state.hands = [null, null]; save(); closeScreen(); };
+  $("playAgain").onclick = () => { clearHands(); save(); closeScreen(); };
   $("backBtn").onclick = closeScreen;
 }
 
@@ -426,13 +470,11 @@ function bindPeek(i) {
 }
 
 // ---- Wiring ----
-[0, 1].forEach(i => {
-  $("spin" + i).onclick = () => spin(i);
-  $("name" + i).addEventListener("input", e => { state.names[i] = e.target.value; save(); render(); });
-  bindPeek(i);
+document.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
+  state.count = +b.dataset.n; clearHands(); save(); render();
 });
-$("revealBtn").onclick = () => confirmScreen("Show both hands?", "Only do this when the game is over. Both hands will be on screen.", "Show both", revealBoth);
-$("newBtn").onclick = () => confirmScreen("Start a new game?", "Both hands will be cleared.", "Clear hands", () => { state.hands = [null, null]; save(); closeScreen(); });
+$("revealBtn").onclick = () => confirmScreen(state.count === 2 ? "Show both hands?" : "Show all hands?", "Only do this when the game is over. Every hand will be on screen.", "Show them", revealAll);
+$("newBtn").onclick = () => confirmScreen("Start a new game?", "All hands will be cleared. Names are kept.", "Clear hands", () => { clearHands(); save(); closeScreen(); });
 $("optConcealed").onchange = e => { state.concealed = e.target.checked; save(); };
 $("optDupes").onchange = e => { state.dupes = e.target.checked; save(); };
 
